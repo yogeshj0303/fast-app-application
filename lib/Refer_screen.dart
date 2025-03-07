@@ -63,7 +63,9 @@ class _ReferScreenState extends State<ReferScreen> {
   void _showMembershipPlans() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => SubscriptionScreen()),
+      MaterialPageRoute(builder: (context) => SubscriptionScreen(
+        
+      )),
     );
   }
 

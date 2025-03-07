@@ -1,10 +1,12 @@
+import 'package:fast_money_app/main_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'Razorpay_screen.dart';
 
 class SubscriptionScreen extends StatefulWidget {
+
   const SubscriptionScreen({Key? key}) : super(key: key);
 
   @override
@@ -16,16 +18,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool isLoading = true;
   bool hasError = false;
   String? _userId;
-  late Razorpay _razorpay;
 
   @override
   void initState() {
     super.initState();
     _getUserIdFromPreferences();
-    _razorpay = Razorpay();
-    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
-    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
-    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
   }
 
   // Fetch user ID from shared preferences
@@ -72,32 +69,32 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  // Razorpay payment success handler
-  void _handlePaymentSuccess(PaymentSuccessResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text("Payment successful: ${response.paymentId}"),
-    ));
-  }
-
-  // Razorpay payment error handler
-  void _handlePaymentError(PaymentFailureResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text("Payment failed: ${response.error?['description']}"),
-    ));
-  }
-
-  // Razorpay external wallet handler
-  void _handleExternalWallet(ExternalWalletResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text("External Wallet: ${response.walletName}"),
-    ));
-  }
-
   @override
   void dispose() {
     super.dispose();
-    _razorpay.clear();
   }
+
+  // Razorpay checkout function for Buy Now
+  void _onBuyNow(Map<String, dynamic> plan) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RazorpayScreen(
+          planId: plan['id'].toString(),
+          userEmail: 'user@example.com', // Replace with actual user email
+          userName: 'User Name', // Replace with actual user name
+          userPhone: '1234567890', // Replace with actual user phone
+          userId: _userId!,
+          plan: plan,
+        ),
+      ),
+    ).then((paymentSuccess) {
+      if (paymentSuccess == true) {
+        Navigator.push(context, MaterialPageRoute(builder: (context)=>MainScreen()));
+            }
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -138,54 +135,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       duration: '${plan['plan_validity']} Days',
                       description:
                           'Earn ${plan['daily_login_earnings']} daily login earnings.',
-                      onBuyNow: () => _onBuyNow(plan['plan_amount']),
+                      onBuyNow: () => _onBuyNow(plan),
                     );
                   },
                 ),
     );
-  }
-
-  // Razorpay checkout function for Buy Now
-  void _onBuyNow(String amount) {
-    print('Amount received: $amount'); // Debug log
-
-    // Clean the amount string by removing currency symbols (₹) and spaces
-    var cleanedAmount = amount.replaceAll(RegExp(r'[^0-9.]'), '');
-    print('Cleaned amount: $cleanedAmount'); // Debug log
-
-    // Parse the cleaned amount string to a double
-    var amountInDouble =
-        double.tryParse(cleanedAmount) ?? 0.0; // Default to 0 if parsing fails
-    print('Parsed amount as double: $amountInDouble'); // Debug log
-
-    if (amountInDouble == 0.0) {
-      print('Invalid amount!'); // Debug log if the amount is still 0
-      return; // Don't proceed if the amount is invalid
-    }
-
-    // Convert to paise (multiply by 100)
-    var amountInPaise =
-        (amountInDouble * 100).toInt(); // Convert to integer (paise)
-    print('Amount in paise: $amountInPaise'); // Debug log
-
-    // Razorpay payment options
-    var options = {
-      'key': 'rzp_test_FzTdXjqOxscHxj', // Replace with your Razorpay Key ID
-      'amount': amountInPaise, // Amount in paise
-      'name': 'Subscription Plan',
-      'description': 'Subscription Plan Purchase',
-      'prefill': {
-        'contact': '1234567890', // Replace with user's phone number
-        'email': 'user@example.com', // Replace with user's email
-      },
-      'theme': {'color': '#F37254'},
-    };
-
-    try {
-      _razorpay.open(options); // Open Razorpay checkout
-    } catch (e) {
-      print("Error opening Razorpay: $e");
-    }
   }
 }
 

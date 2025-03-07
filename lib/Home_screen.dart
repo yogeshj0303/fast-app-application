@@ -6,6 +6,7 @@ import 'contact_us.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'Razorpay_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,7 +16,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Razorpay _razorpay = Razorpay();
   double _walletAmount = 0.0;
   bool _isLoading = true;
   bool hasError = false;
@@ -56,20 +56,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _getUserData();
     _loadSubsId(); // Load the subscription ID and related data
-
-    // Initialize Razorpay listeners
-    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS,
-        (PaymentSuccessResponse response) {
-      _handlePaymentSuccess(response);
-    });
-    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
-    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
   }
 
   @override
   void dispose() {
     super.dispose();
-    _razorpay.clear(); // Clear the Razorpay instance when done
   }
 
   Future<void> _getUserData() async {
@@ -242,38 +233,40 @@ class _HomeScreenState extends State<HomeScreen> {
         throw Exception("Selected plan not found");
       }
 
-      var amount = plan['plan_amount'];
-      if (amount == null || double.parse(amount.toString()) <= 0) {
-        throw Exception("Invalid plan amount");
-      }
-
       // Validate user data
       if (_userPhone == null || _userEmail == null || _userid == null) {
         throw Exception("Missing user details");
       }
-
-      var options = {
-        'key': 'rzp_test_FzTdXjqOxscHxj',
-        'amount': (double.parse(amount.toString()) * 100).toInt().toString(), // Ensure integer amount
-        'name': 'Refer&Earn',
-        'description': '${plan['plan_name']} Subscription',
-        'prefill': {
-          'contact': _userPhone,
-          'email': _userEmail,
-          'name': _userName,
-        },
-        'theme': {'color': '#1381FA'},
-        'external': {
-          'wallets': ['paytm'],
-        },
-      };
 
       setState(() {
         selectedPlanId = planId;
         isLoading = false;
       });
 
-      _razorpay.open(options);
+      // Navigate to RazorpayScreen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RazorpayScreen(
+            planId: planId,
+            userEmail: _userEmail!,
+            userName: _userName!,
+            userPhone: _userPhone!,
+            userId: _userid!,
+            plan: plan,
+          ),
+        ),
+      ).then((paymentSuccess) {
+        if (paymentSuccess == true) {
+          // Handle post-payment success actions
+          setState(() {
+            _subsId = 1;
+            membershipPlans = [];
+            purchasedPlanData = plan;
+            hasFetchedPlanData = true;
+          });
+        }
+      });
     } catch (e) {
       setState(() {
         isLoading = false;
@@ -285,110 +278,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
-  }
-
-  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
-    try {
-      setState(() {
-        isLoading = true;
-      });
-
-      // Store payment success state
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setInt("subs_id", 1);
-      await prefs.setBool('hasFetchedPlanData', true);
-
-      final apiUrl = 'https://fastapp.co.in/api/purchase-membership';
-      final apiResponse = await http.post(
-        Uri.parse(apiUrl),
-        body: {
-          'user_id': _userid.toString(),
-          'membership_plan_id': selectedPlanId.toString(),
-          'payment_id': response.paymentId ?? '',
-          'order_id': response.orderId ?? '',
-          'signature': response.signature ?? '',
-        },
-      );
-
-
-      final data = json.decode(apiResponse.body);
-      
-      if (data['error'] == false) {
-        // Save plan data to SharedPreferences
-        await prefs.setString('purchasedPlanData', json.encode(data['membership_plan']));
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => PurchaseSuccessScreen(
-            membershipDetails: data['membership_plan'],
-          )),
-        );
-        // Update state immediately
-        setState(() {
-          _subsId = 1;
-          membershipPlans = [];
-          purchasedPlanData = data['membership_plan'];
-          hasFetchedPlanData = true;
-        });
-
-   
-        // Show success dialog
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: Text('Success'),
-            content: Text('Membership purchased successfully!'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: Text('OK'),
-              ),
-            ],
-          ),
-        );
-
-        // Refresh data without navigation
-        // await _fetchPurchasedPlanData();
-        
-      } else {
-        throw Exception(data['message']?.toString() ?? "Failed to process payment");
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
-  }
-
-  void _handlePaymentError(PaymentFailureResponse response) {
-    setState(() {
-      isLoading = false;
-    });
-    
-    String errorMessage = response.error?['description'] ?? "Payment failed";
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(errorMessage),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-
-  void _handleExternalWallet(ExternalWalletResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("External Wallet: ${response.walletName}"),
-      ),
-    );
   }
 
   @override
