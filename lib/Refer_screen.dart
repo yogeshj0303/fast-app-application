@@ -1,9 +1,12 @@
+import 'package:fast_money_app/Auth/login_screen.dart';
 import 'package:fast_money_app/Subscription.dart';
 import 'package:fast_money_app/services/api_services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 import 'Models/user_details.dart';
 
@@ -17,6 +20,8 @@ class ReferScreen extends StatefulWidget {
 class _ReferScreenState extends State<ReferScreen> {
   String? _referralCode;
   bool _hasFetchedUserDetails = false;
+  int? _userId;
+  bool _isDeleting = false;
 
   @override
   void initState() {
@@ -27,12 +32,12 @@ class _ReferScreenState extends State<ReferScreen> {
   void _fetchUserDetails() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      int? userId = prefs.getInt('id');
+      _userId = prefs.getInt('id');
 
-      if (userId != null) {
+      if (_userId != null) {
         // Fetch user details from the API
         UserDetailsResponse response =
-            await ApiService().getUserDetails(userId);
+            await ApiService().getUserDetails(_userId!);
         setState(() {
           _hasFetchedUserDetails = true;
           // Check if the subscription ID is 1, and set the referral code accordingly
@@ -81,6 +86,83 @@ class _ReferScreenState extends State<ReferScreen> {
         SnackBar(content: Text('Referral code is not available yet')),
       );
     }
+  }
+
+  // Account deletion function
+  Future<void> _deleteAccount() async {
+    if (_userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User ID not found')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isDeleting = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://fastapp.co.in/api/delete-account?delete_account_status=1&user_id=$_userId'),
+      );
+
+      final data = json.decode(response.body);
+
+      setState(() {
+        _isDeleting = false;
+      });
+
+      if (data['error'] == false) {
+        // Account deleted successfully
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data['message'] ?? 'Account deleted successfully')),
+        );
+        
+        // Clear preferences and navigate to login
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+        
+        // Navigate to login screen and clear all previous routes
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => LoginScreen()), (route) => false);
+      } else {
+        // Error in deletion
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data['message'] ?? 'Failed to delete account')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isDeleting = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    }
+  }
+
+  // Show confirmation dialog before deleting account
+  void _showDeleteConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Account'),
+        content: Text('Are you sure you want to delete your account? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteAccount();
+            },
+            child: Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -249,21 +331,52 @@ class _ReferScreenState extends State<ReferScreen> {
                       ),
                     )
               : Center(child: CircularProgressIndicator()),
-          // Padding(
-          //   padding: const EdgeInsets.symmetric(horizontal: 20),
-          //   child: ElevatedButton(
-          //     style: ElevatedButton.styleFrom(
-          //       shape: RoundedRectangleBorder(
-          //         borderRadius: BorderRadius.circular(8),
-          //       ),
-          //       backgroundColor: Color(0xFF1381FA),
-          //       minimumSize: Size(double.infinity, 40),
-          //     ),
-          //     onPressed: _showPaymentOptions,
-          //     child: Text('Refer',
-          //         style: TextStyle(color: Colors.white, fontSize: 16)),
-          //   ),
-          // ),
+          SizedBox(height: 30),
+          
+          // Account Deletion Section
+          Container(
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+            margin: EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red.withOpacity(0.5), width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Account Settings',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 10),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    backgroundColor: Colors.red,
+                    minimumSize: Size(double.infinity, 40),
+                  ),
+                  onPressed: _isDeleting ? null : _showDeleteConfirmation,
+                  child: _isDeleting 
+                      ? SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : Text(
+                          'Delete Account',
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
+                ),
+              ],
+            ),
+          ),
           SizedBox(height: 20),
         ],
       ),
