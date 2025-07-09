@@ -196,7 +196,7 @@ class _ReferScreenState extends State<ReferScreen> {
               children: [
                 Text(
                   textAlign: TextAlign.center,
-                  'Get ₹100\nFor every new user you refer',
+                  'Get +1 FAP Token\nFor every new user you refer',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 14,

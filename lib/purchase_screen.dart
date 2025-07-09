@@ -73,7 +73,7 @@ class PurchaseSuccessScreen extends StatelessWidget {
                         Icon(Icons.attach_money, color: Colors.blue),
                         SizedBox(width: 8),
                         Text(
-                          '₹ ${membershipDetails['plan_amount']}',
+                          '\$ ${membershipDetails['plan_amount']}',
                           style: TextStyle(fontSize: 16, color: Colors.blue),
                         ),
                       ],
@@ -85,7 +85,7 @@ class PurchaseSuccessScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 10),
                     Text(
-                      'Daily Earnings: ₹ ${membershipDetails['daily_login_earnings']}',
+                      'Daily Earnings: \$ ${membershipDetails['daily_login_earnings']}',
                       style: TextStyle(fontSize: 14, color: Colors.black54),
                     ),
                     SizedBox(height: 10),

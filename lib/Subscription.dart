@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'Razorpay_screen.dart';
+import 'nowpayments_screen.dart';
 
 class SubscriptionScreen extends StatefulWidget {
-
   const SubscriptionScreen({Key? key}) : super(key: key);
 
   @override
@@ -18,25 +17,30 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool isLoading = true;
   bool hasError = false;
   String? _userId;
+  String? _userEmail;
+  String? _userName;
+  String? _userPhone;
 
   @override
   void initState() {
     super.initState();
-    _getUserIdFromPreferences();
+    _getUserDataFromPreferences();
   }
 
-  // Fetch user ID from shared preferences
-  Future<void> _getUserIdFromPreferences() async {
+  // Fetch user data from shared preferences
+  Future<void> _getUserDataFromPreferences() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
-      _userId =
-          prefs.getInt('id')?.toString(); // Get user_id from SharedPreferences
+      _userId = prefs.getInt('id')?.toString();
+      _userEmail = prefs.getString('email');
+      _userName = prefs.getString('name');
+      _userPhone = prefs.getString('phone');
     });
     if (_userId != null) {
       _fetchMembershipPlans();
     } else {
       setState(() {
-        hasError = true; // If user_id is not found, show error
+        hasError = true;
       });
     }
   }
@@ -69,21 +73,16 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  // Razorpay checkout function for Buy Now
+  // NowPayments checkout function
   void _onBuyNow(Map<String, dynamic> plan) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => RazorpayScreen(
+        builder: (context) => NowPaymentsScreen(
           planId: plan['id'].toString(),
-          userEmail: 'user@example.com', // Replace with actual user email
-          userName: 'User Name', // Replace with actual user name
-          userPhone: '1234567890', // Replace with actual user phone
+          userEmail: _userEmail ?? 'user@example.com',
+          userName: _userName ?? 'User Name',
+          userPhone: _userPhone ?? '1234567890',
           userId: _userId!,
           plan: plan,
         ),
@@ -91,10 +90,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     ).then((paymentSuccess) {
       if (paymentSuccess == true) {
         Navigator.push(context, MaterialPageRoute(builder: (context)=>MainScreen()));
-            }
+      }
     });
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -131,10 +129,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     final plan = membershipPlans[index];
                     return SubscriptionCard(
                       title: plan['plan_name'],
-                      price: '₹ ${plan['plan_amount']}',
+                      price: '${plan['plan_amount']}\$',
                       duration: '${plan['plan_validity']} Days',
                       description:
-                          'Earn ${plan['daily_login_earnings']} daily login earnings.',
+                          'Daily ${plan['daily_login_earnings']}\$ USDT',
                       onBuyNow: () => _onBuyNow(plan),
                     );
                   },

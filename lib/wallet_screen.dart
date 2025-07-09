@@ -137,13 +137,13 @@ class _WalletScreenState extends State<WalletScreen> {
               children: [
                 _buildBalanceInfo(
                   title: "Total Earnings",
-                  amount: "₹ $_walletAmount",
+                  amount: "\$ $_walletAmount",
                   color: Colors.green,
                   icon: Icons.arrow_upward,
                 ),
                 _buildBalanceInfo(
                   title: "Total Withdrawals",
-                  amount: "₹ $_totalWithdrawals", // Update to use the loaded value
+                  amount: "\$ $_totalWithdrawals", // Update to use the loaded value
                   color: Colors.red,
                   icon: Icons.arrow_downward,
                 ),
@@ -224,7 +224,7 @@ class _WalletScreenState extends State<WalletScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "UPI Withdrawal",
+                "USDT Withdrawal",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -234,7 +234,7 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(height: 15),
               _buildTextField(
                 controller: mobileController,
-                labelText: 'Enter Mobile Number linked to UPI',
+                labelText: 'Enter Mobile Number',
                 icon: Icons.phone,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -288,7 +288,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     }
                   },
                   child: const Text(
-                    'Withdraw Now',
+                    'USDT Wthdraw Now',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 16,

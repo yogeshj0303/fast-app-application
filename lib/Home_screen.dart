@@ -5,8 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'contact_us.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:razorpay_flutter/razorpay_flutter.dart';
-import 'Razorpay_screen.dart';
+import 'nowpayments_screen.dart';
+import 'services/nowpayments_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userPhone;
   int? _subsId;
   List<dynamic> membershipPlans = [];
-  String? selectedPlanId; // To store the selected planId
+  String? selectedPlanId;
   Map<String, dynamic>? purchasedPlanData;
   bool hasFetchedPlanData = false;
 
@@ -39,11 +39,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _subsId = subsId;
       hasFetchedPlanData = fetchedPlanData;
       if (subsId == 1) {
-        membershipPlans = []; // Clear membership plans if user has subscription
+        membershipPlans = [];
       }
     });
 
-    // Load the relevant data based on _subsId
     if (subsId == 0) {
       await _fetchMembershipPlans();
     } else if (!fetchedPlanData || subsId == 1) {
@@ -55,7 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _getUserData();
-    _loadSubsId(); // Load the subscription ID and related data
+    _loadSubsId();
   }
 
   @override
@@ -65,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _getUserData() async {
     setState(() {
-      _isLoading = true; // Show loading spinner when fetching user data
+      _isLoading = true;
     });
 
     try {
@@ -73,24 +72,21 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _userid = prefs.getInt('id')?.toString();
       });
-      // Load other user-related data
       _userEmail = prefs.getString('email');
       _walletAmount = prefs.getDouble('wallet_amount') ?? 0.0;
       _userName = prefs.getString('name');
       _userPhone = prefs.getString('mobile');
 
-      // Check if the purchased plan is already in SharedPreferences
       String? savedPlanData = prefs.getString('purchasedPlanData');
 
       if (_subsId == 0) {
-        _fetchMembershipPlans(); // Fetch membership plans if subsId is 0
+        _fetchMembershipPlans();
       } else if (savedPlanData != null) {
         setState(() {
           purchasedPlanData = json.decode(savedPlanData);
-          _isLoading = false; // Stop loading if plan data is already available
+          _isLoading = false;
         });
       } else {
-        // If no plan data, proceed to fetch and store it
         await _fetchPurchasedPlanData();
       }
     } catch (e) {
@@ -110,24 +106,42 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final response = await http.post(Uri.parse(
-          'https://fastapp.co.in/api/purchase-membership?user_id=$_userid&membership_plan_id=$_subsId'));
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? paymentId = prefs.getString('payment_id');
+      
+      // Get payment status from NOWPayments API
+      final nowPaymentsService = NowPaymentsService();
+      final paymentStatus = await nowPaymentsService.getPaymentStatus(paymentId!);
+
+      final response = await http.post(
+        Uri.parse('https://fastapp.co.in/api/purchase-membership?user_id=$_userid&membership_plan_id=$_subsId'),
+        body: {
+          'payment_id': paymentStatus['payment_id'].toString(),
+          'payment_status': paymentStatus['payment_status'],
+          'pay_address': paymentStatus['pay_address'],
+          'price_amount': paymentStatus['price_amount'].toString(),
+          'pay_currency': paymentStatus['pay_currency'],
+          'order_id': paymentStatus['order_id'],
+          'order_description': paymentStatus['order_description'],
+          'purchase_id': paymentStatus['purchase_id'].toString(),
+          'payin_hash': paymentStatus['payin_hash']?.toString() ?? '',
+          'created_at': paymentStatus['created_at'],
+          'updated_at': paymentStatus['updated_at'],
+          'type': paymentStatus['type'],
+          'payment_provider': 'nowpayments',
+        },
+      );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
 
         if (data != null && !data['error']) {
-          // Save the fetched plan data to SharedPreferences for future use
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setString(
-              'purchasedPlanData', json.encode(data['membership_plan']));
-
-          // Save the flag to indicate the data has been fetched
+          await prefs.setString('purchasedPlanData', json.encode(data['membership_plan']));
           await prefs.setBool('hasFetchedPlanData', true);
 
           setState(() {
             purchasedPlanData = data['membership_plan'];
-            _isLoading = false; // Stop loading once data is fetched
+            _isLoading = false;
           });
         } else {
           setState(() {
@@ -146,6 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
         hasError = true;
       });
+      print('Error fetching purchased plan data: $e');
     }
   }
 
@@ -218,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openRazorpayCheckout(String planId) async {
+  void _openNowPaymentsCheckout(String planId) async {
     try {
       setState(() {
         isLoading = true;
@@ -233,7 +248,6 @@ class _HomeScreenState extends State<HomeScreen> {
         throw Exception("Selected plan not found");
       }
 
-      // Validate user data
       if (_userPhone == null || _userEmail == null || _userid == null) {
         throw Exception("Missing user details");
       }
@@ -243,11 +257,10 @@ class _HomeScreenState extends State<HomeScreen> {
         isLoading = false;
       });
 
-      // Navigate to RazorpayScreen
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => RazorpayScreen(
+          builder: (context) => NowPaymentsScreen(
             planId: planId,
             userEmail: _userEmail!,
             userName: _userName!,
@@ -258,7 +271,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ).then((paymentSuccess) {
         if (paymentSuccess == true) {
-          // Handle post-payment success actions
           setState(() {
             _subsId = 1;
             membershipPlans = [];
@@ -314,152 +326,227 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
         child: ListView(
+          clipBehavior: Clip.none,
+          physics: const BouncingScrollPhysics(),
           children: [
             Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               color: Colors.white,
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10),
+                padding: const EdgeInsets.all(12.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Hi, $_userName',
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hi, $_userName',
                             style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        Row(
-                          children: [
-                            Text('Amount in your wallet',
-                                style: TextStyle(
-                                    color: Colors.black,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold)),
-                            SizedBox(width: 10),
-                            Icon(Icons.account_balance_wallet,
-                                color: Colors.black),
-                          ],
-                        ),
-                        Text(
-                          '₹ $_walletAmount',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text(
+                                'Amount in your wallet',
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(Icons.account_balance_wallet, color: Colors.blue, size: 20),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '\$$_walletAmount',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     CircleAvatar(
-                      radius: 40,
-                      backgroundImage: const AssetImage(
-                          'assets/images/fast_money_large.jpg'),
+                      radius: 35,
+                      backgroundImage: const AssetImage('assets/images/fast_money_large.jpg'),
                       backgroundColor: Colors.white,
                     ),
                   ],
                 ),
               ),
             ),
+            const SizedBox(height: 8),
             _subsId == null
-                ? Text("No Plan Found!")
+                ? Center(child: Text("No Plan Found!", style: TextStyle(fontSize: 16, color: Colors.white)))
                 : _subsId == 1
                     ? Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         color: Colors.white,
-                        elevation: 2,
                         child: Padding(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 16.0, vertical: 10),
+                          padding: const EdgeInsets.all(12.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 "Purchased Plan: ${purchasedPlanData?['plan_name']}",
                                 style: TextStyle(
-                                  fontSize: 18,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
                                 ),
                               ),
-                              SizedBox(height: 10),
-                              Text(
-                                "Amount: ₹${purchasedPlanData?['plan_amount']}",
-                                style: TextStyle(fontSize: 16),
-                              ),
-                              SizedBox(height: 10),
-                              Text(
-                                "Validity: ${purchasedPlanData?['plan_validity']} Days",
-                                style: TextStyle(fontSize: 16),
-                              ),
-                              SizedBox(height: 10),
-                              Text(
-                                "Earn daily: ${purchasedPlanData?['daily_login_earnings']}",
-                                style: TextStyle(fontSize: 16),
-                              ),
+                              const SizedBox(height: 8),
+                              _buildPlanDetailRow("Amount", "\$${purchasedPlanData?['plan_amount']}"),
+                              const SizedBox(height: 6),
+                              _buildPlanDetailRow("Validity", "${purchasedPlanData?['plan_validity']} Days"),
+                              const SizedBox(height: 6),
+                              _buildPlanDetailRow("Earn daily", "\$${purchasedPlanData?['daily_login_earnings']}"),
                             ],
                           ),
                         ),
                       )
                     : _subsId == 0
                         ? SizedBox(
-                            height: 270,
+                            height: 260,
                             child: isLoading
-                                ? const Center(
-                                    child: CircularProgressIndicator())
+                                ? const Center(child: CircularProgressIndicator())
                                 : ListView.builder(
+                                    clipBehavior: Clip.none,
+                                    physics: const BouncingScrollPhysics(),
                                     scrollDirection: Axis.horizontal,
-                                    padding: const EdgeInsets.all(10.0),
+                                    padding: const EdgeInsets.symmetric(vertical: 0),
                                     itemCount: membershipPlans.length,
                                     itemBuilder: (context, index) {
                                       final plan = membershipPlans[index];
-                                      return SubscriptionCard(
-                                        title: plan['plan_name'],
-                                        price: '₹ ${plan['plan_amount']}',
-                                        duration:
-                                            '${plan['plan_validity']} Days',
-                                        description:
-                                            'Earn ${plan['daily_login_earnings']} daily login earnings.',
-                                        onBuyNow: () {
-                                          _openRazorpayCheckout(
-                                              plan['id'].toString());
-                                        },
-                                        isLoading: isLoading,
+                                      return Padding(
+                                        padding: const EdgeInsets.only(right: 8.0),
+                                        child: SubscriptionCard(
+                                          title: plan['plan_name'],
+                                          price: '${plan['plan_amount']}\$',
+                                          duration: '${plan['plan_validity']} Days',
+                                          description: 'Daily ${plan['daily_login_earnings']}\$ USDT',
+                                          onBuyNow: () {
+                                            _openNowPaymentsCheckout(plan['id'].toString());
+                                          },
+                                          isLoading: isLoading,
+                                        ),
                                       );
                                     },
                                   ),
                           )
-                        : Text("No Plan Found!"),
+                        : Center(child: Text("No Plan Found!", style: TextStyle(fontSize: 16, color: Colors.white))),
+            const SizedBox(height: 8),
             _buildInfoCard(
               'Earn rewards with every day login',
-              'Your wallet balance increases by +₹1 for every login.',
+              'Your wallet balance increases by +1 FAP Token for every login.',
               'assets/images/get_money.png',
             ),
+            const SizedBox(height: 8),
             _buildInfoCard(
               'What Will I Get?',
               '10% of every referral package',
               'assets/images/get_money.png',
             ),
+            const SizedBox(height: 8),
             _buildInfoCard(
               'How to Refer?',
               'Share your referral code with your friends.',
               'assets/images/referral.png',
             ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildPlanDetailRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.black87,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildInfoCard(String title, String description, String assetPath) {
     return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       color: Colors.white,
-      child: ListTile(
-        leading: Image.asset(assetPath, width: 35, height: 35),
-        title: Text(title),
-        subtitle: Text(description),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.asset(assetPath, width: 30, height: 30),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -495,49 +582,94 @@ class SubscriptionCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.blue.withOpacity(0.2), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: TextStyle(
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                title,
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blue),
+                  color: Colors.blue,
+                ),
+              ),
             ),
-            SizedBox(height: 8),
-            Text(
-              price,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  price,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    duration,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.green[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            SizedBox(height: 8),
-            Text(
-              duration,
-              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-            ),
-            SizedBox(height: 10),
-            Text(
-              description,
-              style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Text(
+                description,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[800],
+                  height: 1.4,
+                ),
+              ),
             ),
             Spacer(),
             Align(
               alignment: Alignment.bottomRight,
               child: isLoading
-                  ? CircularProgressIndicator(color: Colors.white)
+                  ? CircularProgressIndicator(color: Colors.blue)
                   : ElevatedButton(
                       onPressed: onBuyNow,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                       ),
                       child: Text(
                         'Buy Now',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
             ),
@@ -547,3 +679,4 @@ class SubscriptionCard extends StatelessWidget {
     );
   }
 }
+
